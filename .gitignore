@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+signaling-server/node_modules/
+
+# Environment variables
+.env
+.env.local
+.env.production
+frontend/.env
+
+# Build outputs
+build/
+dist/
+frontend/build/
+frontend/dist/
+
+# Hardhat files
+cache/
+artifacts/
+typechain/
+typechain-types/
+coverage/
+coverage.json
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Private keys - NEVER commit these!
+*.pem
+*.key

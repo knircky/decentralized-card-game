@@ -1,0 +1,24 @@
+decentralized-card-game/
+├── contracts/
+│   ├── CardGame.sol
+│   └── interfaces/
+│       └── ICardGame.sol
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── GameTable.jsx
+│   │   │   ├── PlayerPool.jsx
+│   │   │   ├── WalletConnect.jsx
+│   │   │   └── WithdrawModal.jsx
+│   │   ├── services/
+│   │   │   ├── p2p.js
+│   │   │   ├── gameLogic.js
+│   │   │   └── contractService.js
+│   │   ├── App.jsx
+│   │   └── index.js
+│   ├── public/
+│   └── package.json
+├── scripts/
+│   └── deploy.js
+├── hardhat.config.js
+└── package.json

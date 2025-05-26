@@ -1,0 +1,18 @@
+[
+  "event GameStarted(uint256 indexed,address,address)",
+  "event PlayerJoined(address indexed,uint256)",
+  "event PlayerLeft(address indexed,uint256)",
+  "event Withdrawal(address indexed,uint256)",
+  "function BET_AMOUNT() view returns (uint256)",
+  "function MIN_STAKE() view returns (uint256)",
+  "function gameIdCounter() view returns (uint256)",
+  "function getPlayerPool() view returns (address[])",
+  "function getPoolSize() view returns (uint256)",
+  "function joinPool() payable",
+  "function leavePool()",
+  "function playerPool(uint256) view returns (address)",
+  "function players(address) view returns (address,uint256,bool,uint256)",
+  "function processedGames(uint256) view returns (bool)",
+  "function rejoinPool()",
+  "function withdrawWithHistory((address,address,address,uint256,uint256,bytes,bytes)[])"
+]
