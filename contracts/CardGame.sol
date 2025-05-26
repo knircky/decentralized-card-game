@@ -14,7 +14,8 @@ contract CardGame is ReentrancyGuard {
     struct Player {
         address addr;
         uint256 balance;
-        bool inPool;
+        bool staked;
+        bool availableForMatching;
         uint256 lastActivity;
     }
     
@@ -34,6 +35,7 @@ contract CardGame is ReentrancyGuard {
     
     event PlayerJoined(address indexed player, uint256 balance);
     event PlayerLeft(address indexed player, uint256 balance);
+    event PlayerEnteredMatchmaking(address indexed player);
     event GameStarted(uint256 indexed gameId, address player1, address player2);
     event Withdrawal(address indexed player, uint256 amount);
     
@@ -44,8 +46,8 @@ contract CardGame is ReentrancyGuard {
     
     function joinPool() external payable {
         // Allow rejoining if player has sufficient balance
-        if (players[msg.sender].inPool) {
-            require(msg.value == 0, "Already in pool");
+        if (players[msg.sender].staked) {
+            require(msg.value == 0, "Already staked");
             return;
         }
         
@@ -62,7 +64,8 @@ contract CardGame is ReentrancyGuard {
                 players[msg.sender] = Player({
                     addr: msg.sender,
                     balance: msg.value,
-                    inPool: true,
+                    staked: true,
+                    availableForMatching: true,
                     lastActivity: block.timestamp
                 });
             } else {
@@ -70,7 +73,8 @@ contract CardGame is ReentrancyGuard {
             }
         }
         
-        players[msg.sender].inPool = true;
+        players[msg.sender].staked = true;
+        players[msg.sender].availableForMatching = true;
         playerPool.push(msg.sender);
         emit PlayerJoined(msg.sender, players[msg.sender].balance);
         
@@ -91,6 +95,9 @@ contract CardGame is ReentrancyGuard {
         
         address player1 = playerPool[idx1];
         address player2 = playerPool[idx2];
+
+        players[player1].availableForMatching = false;
+        players[player2].availableForMatching = false;
         
         // Remove from pool
         _removeFromPool(idx1);
@@ -107,28 +114,12 @@ contract CardGame is ReentrancyGuard {
         playerPool.pop();
     }
     
-    function rejoinPool() external onlyActivePlayer {
-        require(!players[msg.sender].inPool, "Already in pool");
-        require(players[msg.sender].balance >= BET_AMOUNT, "Insufficient balance");
-        
-        players[msg.sender].inPool = true;
-        playerPool.push(msg.sender);
-        
-        emit PlayerJoined(msg.sender, players[msg.sender].balance);
-        
-        // Auto-match if possible
-        if (playerPool.length >= 2) {
-            _matchPlayers();
-        }
-    }
-    
     function withdrawWithHistory(GameResult[] calldata results) external nonReentrant onlyActivePlayer {
         uint256 netChange = 0;
         address player = msg.sender;
         
         // Remove from pool if in it
-        if (players[player].inPool) {
-            players[player].inPool = false;
+        if (players[player].availableForMatching) {
             for (uint256 i = 0; i < playerPool.length; i++) {
                 if (playerPool[i] == player) {
                     _removeFromPool(i);
@@ -136,6 +127,8 @@ contract CardGame is ReentrancyGuard {
                 }
             }
         }
+        players[player].staked = false;
+        players[player].availableForMatching = false;
         
         // Process game results
         for (uint256 i = 0; i < results.length; i++) {
@@ -175,9 +168,10 @@ contract CardGame is ReentrancyGuard {
     }
     
     function leavePool() external onlyActivePlayer {
-        require(players[msg.sender].inPool, "Not in pool");
+        require(players[msg.sender].staked, "Not staked");
         
-        players[msg.sender].inPool = false;
+        players[msg.sender].staked = false;
+        players[msg.sender].availableForMatching = false;
         
         for (uint256 i = 0; i < playerPool.length; i++) {
             if (playerPool[i] == msg.sender) {
@@ -186,7 +180,13 @@ contract CardGame is ReentrancyGuard {
             }
         }
         
-        emit PlayerLeft(msg.sender, players[msg.sender].balance);
+        uint256 balanceToWithdraw = players[msg.sender].balance;
+        players[msg.sender].balance = 0;
+        
+        (bool success, ) = msg.sender.call{value: balanceToWithdraw}("");
+        require(success, "Transfer failed");
+        
+        emit PlayerLeft(msg.sender, balanceToWithdraw);
     }
     
     function getPoolSize() external view returns (uint256) {

@@ -1,50 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 
-function PlayerPool({ contract, playerData, onDataUpdate }) {
+function PlayerPool({ contractService, playerData, onDataUpdate, onEnterMatchmaking, onWithdrawAndQuit }) {
   const [stakeAmount, setStakeAmount] = useState('100');
   const [isJoining, setIsJoining] = useState(false);
   const [poolPlayers, setPoolPlayers] = useState([]);
 
   useEffect(() => {
-    if (contract) {
+    if (contractService) {
       loadPoolPlayers();
     }
-  }, [contract, playerData]);
+  }, [contractService, playerData]);
 
   const loadPoolPlayers = async () => {
     try {
-      const players = await contract.getPlayerPool();
+      const players = await contractService.getPlayerPool();
       setPoolPlayers(players);
     } catch (error) {
       console.error('Error loading pool players:', error);
     }
   };
 
-  const joinPool = async () => {
-    if (!contract) return;
+  const handleJoinPool = async () => {
+    if (!contractService) return;
 
     setIsJoining(true);
     try {
-      await contract.joinPool(stakeAmount);
-      onDataUpdate();
+      await contractService.joinPool(stakeAmount);
+      onDataUpdate(); // This will trigger a refresh of playerData in App.jsx
     } catch (error) {
       console.error('Error joining pool:', error);
-      alert('Failed to join pool: ' + error.message);
+      alert('Failed to join pool: ' + (error?.data?.message || error.message));
     } finally {
       setIsJoining(false);
-    }
-  };
-
-  const leavePool = async () => {
-    if (!contract) return;
-
-    try {
-      await contract.leavePool();
-      onDataUpdate();
-    } catch (error) {
-      console.error('Error leaving pool:', error);
-      alert('Failed to leave pool: ' + error.message);
     }
   };
 
@@ -60,7 +48,15 @@ function PlayerPool({ contract, playerData, onDataUpdate }) {
         <div className="bg-gray-700 p-4 rounded">
           <h3 className="text-lg font-semibold mb-2">Your Status</h3>
           <p>Balance: {playerData.balance} tokens</p>
-          <p>In Pool: {playerData.inPool ? 'Yes' : 'No'}</p>
+          {playerData.staked ? (
+            playerData.availableForMatching ? (
+              <p className="text-yellow-300">Status: Staked (Waiting for match in pool)</p>
+            ) : (
+              <p className="text-green-400">Status: Staked (Game ended or not in matchmaking)</p>
+            )
+          ) : (
+            <p className="text-red-400">Status: Not Staked</p>
+          )}
           <p>Players in Pool: {playerData.poolSize}</p>
         </div>
 
@@ -75,8 +71,35 @@ function PlayerPool({ contract, playerData, onDataUpdate }) {
         </div>
       </div>
 
-      {playerData.inPool ? (
-        // PLAYER IS IN POOL - Show waiting message
+      {!playerData.staked && (
+        // PLAYER IS NOT STAKED - Show stake input and join button
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-2">
+              Stake Amount (ETH) - Min 100
+            </label>
+            <input
+              type="number"
+              value={stakeAmount}
+              onChange={(e) => setStakeAmount(e.target.value)}
+              min="100"
+              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+              placeholder="Minimum 100 ETH"
+            />
+          </div>
+          
+          <button
+            onClick={handleJoinPool}
+            disabled={isJoining || parseFloat(stakeAmount) < 100}
+            className="w-full bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isJoining ? 'Joining Pool...' : 'Join Pool'}
+          </button>
+        </div>
+      )}
+
+      {playerData.staked && playerData.availableForMatching && (
+        // PLAYER IS STAKED AND WAITING FOR MATCH
         <div className="space-y-4">
           <div className="bg-yellow-600 bg-opacity-20 border border-yellow-600 rounded p-4">
             <p className="text-yellow-300 font-semibold">
@@ -86,37 +109,30 @@ function PlayerPool({ contract, playerData, onDataUpdate }) {
               You'll be automatically matched when another player is available.
             </p>
           </div>
-          
           <button
-            onClick={leavePool}
+            onClick={onWithdrawAndQuit}
             className="w-full bg-gray-600 hover:bg-gray-700 px-6 py-3 rounded"
           >
-            Leave Pool (and withdraw funds)
+            Withdraw Funds & Quit
           </button>
         </div>
-      ) : (
-        // PLAYER IS NOT IN POOL - Show stake input and join button
+      )}
+
+      {playerData.staked && !playerData.availableForMatching && (
+        // PLAYER IS STAKED BUT NOT IN MATCHMAKING (e.g., game ended)
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">
-              Stake Amount (tokens)
-            </label>
-            <input
-              type="number"
-              value={stakeAmount}
-              onChange={(e) => setStakeAmount(e.target.value)}
-              min="100"
-              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
-              placeholder="Minimum 100 tokens"
-            />
-          </div>
-          
+           <p className="text-green-400 text-center">Game ended or you are not currently in matchmaking.</p>
           <button
-            onClick={joinPool}
-            disabled={isJoining || parseInt(stakeAmount) < 100}
-            className="w-full bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={onEnterMatchmaking}
+            className="w-full bg-green-600 hover:bg-green-700 px-6 py-3 rounded"
           >
-            {isJoining ? 'Joining Pool...' : 'Join Pool'}
+            Play Another Hand
+          </button>
+          <button
+            onClick={onWithdrawAndQuit}
+            className="w-full bg-red-600 hover:bg-red-700 px-6 py-3 rounded"
+          >
+            Withdraw Funds & Quit
           </button>
         </div>
       )}

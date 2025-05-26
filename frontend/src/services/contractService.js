@@ -30,11 +30,17 @@ export class ContractService {
     console.log('ContractService: Left pool successfully');
   }
 
-  async rejoinPool() {
-    console.log('ContractService: Rejoining pool...');
-    const tx = await this.contract.rejoinPool();
-    await tx.wait();
-    console.log('ContractService: Rejoined pool successfully');
+  async enterMatchmaking() {
+    console.log('ContractService: Entering matchmaking...');
+    try {
+      const tx = await this.contract.enterMatchmaking();
+      console.log('ContractService: Transaction sent for enterMatchmaking:', tx.hash);
+      await tx.wait();
+      console.log('ContractService: Entered matchmaking successfully');
+    } catch (error) {
+      console.error('ContractService: Error entering matchmaking:', error);
+      throw error; // Re-throw to be caught by UI
+    }
   }
 
   async withdrawWithHistory(gameResults) {
@@ -66,15 +72,18 @@ export class ContractService {
       const poolSize = await this.contract.getPoolSize();
       console.log('Pool size:', poolSize);
       
-      // Player struct: addr, balance, inPool, lastActivity
+      // Player struct: address addr, uint256 balance, bool staked, bool availableForMatching, uint256 lastActivity
+      // Solidity returns an array: [addr, balance, staked, availableForMatching, lastActivity]
+      // However, ethers.js might also return an object-like array with named properties. Let's access by index for safety.
       return {
-        balance: ethers.utils.formatEther(player[1] || 0),
-        inPool: player[2] || false,
+        balance: ethers.utils.formatEther(player[1] || 0), // balance is at index 1
+        staked: player[2] || false, // staked is at index 2
+        availableForMatching: player[3] || false, // availableForMatching is at index 3
         poolSize: poolSize.toNumber()
       };
     } catch (error) {
       console.error('Contract call error:', error);
-      return { balance: "0", inPool: false, poolSize: 0 };
+      return { balance: "0", staked: false, availableForMatching: false, poolSize: 0 };
     }
   }
   
@@ -105,5 +114,22 @@ export class ContractService {
     });
     
     console.log('GameStarted event listener registered');
+  }
+
+  onPlayerEnteredMatchmaking(callback) {
+    console.log('Setting up PlayerEnteredMatchmaking event listener...');
+    this.contract.removeAllListeners('PlayerEnteredMatchmaking'); // Remove existing listeners
+    this.contract.on('PlayerEnteredMatchmaking', (playerAddress, event) => {
+      console.log('👋 PlayerEnteredMatchmaking event fired!');
+      console.log('  Player Address:', playerAddress);
+      if (this.account.toLowerCase() === playerAddress.toLowerCase()) {
+        try {
+          callback(playerAddress);
+        } catch (error) {
+          console.error('Error in PlayerEnteredMatchmaking callback:', error);
+        }
+      }
+    });
+    console.log('PlayerEnteredMatchmaking event listener registered');
   }
 }
