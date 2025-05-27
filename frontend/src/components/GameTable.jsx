@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { gameLogic } from '../services/gameLogic';
 
-function GameTable({ game, account, p2pService, onGameEnd }) {
+// Props are now gameId, opponentAddress, isPlayer1 directly instead of a 'game' object
+function GameTable({ gameId, opponentAddress, isPlayer1, account, p2pService, onGameEnd }) {
   const [gameState, setGameState] = useState('waiting');
-  const [myCard, setMyCard] = useState(null);
+  const [myCard, setMyCard] = useState(null); // Stores { value: number, secret: string }
   const [opponentCard, setOpponentCard] = useState(null);
   const [myCommit, setMyCommit] = useState(null);
   const [opponentCommit, setOpponentCommit] = useState(null);
-  const [result, setResult] = useState(null);
+  const [result, setResult] = useState(null); // Stores the winner's address or null for a tie
+  const [finalGameDataForParent, setFinalGameDataForParent] = useState(null); // To store data for onGameEnd
   
   // Use refs to prevent double initialization
   const gameInitialized = useRef(false);
@@ -65,22 +67,23 @@ function GameTable({ game, account, p2pService, onGameEnd }) {
 
   // Watch for both cards revealed
   useEffect(() => {
-    if (myCard && opponentCard && gameState === 'revealing') {
+    if (myCard?.value !== undefined && opponentCard !== undefined && gameState === 'revealing') {
       console.log('GameTable: Both cards revealed, determining winner');
       determineWinner(myCard.value, opponentCard);
     }
-  }, [myCard, opponentCard, gameState]);
+  }, [myCard, opponentCard, gameState]); // myCard is now an object
 
   const startGame = async () => {
     console.log('GameTable: Starting game...');
     
     // Generate card and commit
     const { card, secret, commit } = gameLogic.generateCardAndCommit();
-    console.log('GameTable: Generated card:', card);
+    console.log('GameTable: Generated card value:', card);
     
-    setMyCard({ value: card, secret });
+    setMyCard({ value: card, secret: secret }); // Store as object
     setMyCommit(commit);
     setGameState('committed');
+    setFinalGameDataForParent(null); // Reset for new game
     
     // Send commit to opponent
     setTimeout(() => {
@@ -89,60 +92,59 @@ function GameTable({ game, account, p2pService, onGameEnd }) {
   };
 
   const determineWinner = async (myCardValue, opponentCardValue) => {
-    console.log('GameTable: Determining winner - my:', myCardValue, 'opponent:', opponentCardValue);
+    console.log('GameTable: Determining winner - my card value:', myCardValue, 'opponent card value:', opponentCardValue);
     
     const winner = gameLogic.determineWinner(
       myCardValue, 
       opponentCardValue,
-      account,
-      game.opponent
+      account, // My account
+      opponentAddress // Opponent's account from props
     );
 
-    console.log('GameTable: Winner:', winner);
-    setResult(winner);
+    console.log('GameTable: Winner determined:', winner);
+    setResult(winner); // winner is an address or null
     setGameState('finished');
 
-    // Create game result for local storage
-    const gameResult = await gameLogic.createAndSignResultSilent(
-      game.gameId,
-      game.isPlayer1 ? account : game.opponent,
-      game.isPlayer1 ? game.opponent : account,
-      winner,
-      game.isPlayer1
-    );
-
-    // Store locally
-    const gameHistory = JSON.parse(localStorage.getItem('gameHistory') || '[]');
-    gameHistory.push({
-      ...gameResult,
-      timestamp: Date.now(),
+    // Prepare data for onGameEnd callback
+    const gameData = {
+      gameId: gameId, // from props
+      player1: isPlayer1 ? account : opponentAddress,
+      player2: isPlayer1 ? opponentAddress : account,
+      winner: winner,
       myCard: myCardValue,
       opponentCard: opponentCardValue,
-      processed: false
-    });
-    localStorage.setItem('gameHistory', JSON.stringify(gameHistory));
+      timestamp: Date.now(), // Local timestamp for when the game finished on client
+      // For App.jsx to fill for its own gameHistory:
+      isPlayer1FromGameTable: isPlayer1, 
+      opponentAddressFromGameTable: opponentAddress,
+    };
+    setFinalGameDataForParent(gameData); // Store these details
 
-    console.log('GameTable: Game stored locally');
+    // The local storage part in App.jsx will handle its own history
+    console.log('GameTable: Game finished, data prepared for parent:', gameData);
   };
 
   const handlePlayAgain = () => {
+    if (!finalGameDataForParent) {
+      console.error("GameTable: finalGameDataForParent is not set. Cannot Play Again.");
+      // Optionally, set to a default state or show error
+      onGameEnd({ quit: true }); // Default to quit if data is missing
+      return;
+    }
     console.log('GameTable: Play Again clicked');
-    // Reset state
-    setGameState('waiting');
-    setMyCard(null);
-    setOpponentCard(null);
-    setMyCommit(null);
-    setOpponentCommit(null);
-    setResult(null);
-    gameInitialized.current = false;
-    
-    // Tell parent to rejoin pool
-    onGameEnd({ playAgain: true });
+    onGameEnd({ ...finalGameDataForParent, playAgain: true });
+    // Resetting state for a new game will be handled by App.jsx re-rendering or explicit function
+    // For now, let App.jsx manage the view change which should unmount/remount or reset GameTable via key change
   };
 
   const handleQuit = () => {
+    if (!finalGameDataForParent) {
+      console.error("GameTable: finalGameDataForParent is not set. Cannot Quit.");
+      onGameEnd({ quit: true }); // Default to quit if data is missing
+      return;
+    }
     console.log('GameTable: Quit clicked');
-    onGameEnd({ quit: true });
+    onGameEnd({ ...finalGameDataForParent, quit: true });
   };
 
   const getCardDisplay = (value) => {
@@ -165,15 +167,16 @@ function GameTable({ game, account, p2pService, onGameEnd }) {
     <div className="max-w-4xl mx-auto">
       <div className="bg-green-800 rounded-lg p-8 shadow-2xl">
         <h2 className="text-3xl font-bold text-center mb-8">
-          Game #{game.gameId}
+          Game #{gameId} {/* Use gameId from props */}
         </h2>
 
         <div className="flex justify-between items-center mb-8">
           <div className="text-center">
             <h3 className="text-xl mb-2">Opponent</h3>
-            <p className="text-sm text-gray-300">{game.opponent.slice(0, 8)}...</p>
+            {/* Use opponentAddress from props */}
+            <p className="text-sm text-gray-300">{opponentAddress.slice(0, 8)}...</p>
             <div className="mt-4 bg-white text-black rounded-lg p-8 w-32 h-44 flex items-center justify-center text-4xl font-bold">
-              {gameState === 'finished' && opponentCard !== null ? (
+              {gameState === 'finished' && opponentCard !== undefined ? (
                 <span className={getCardDisplay(opponentCard).color}>
                   {getCardDisplay(opponentCard).rank}
                   {getCardDisplay(opponentCard).suit}
